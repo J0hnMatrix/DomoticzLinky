@@ -1,3 +1,17 @@
+# ⚠️ WARNING / ATTENTION ⚠️
+
+## 🇫🇷 **Projet probablement non maintenu**
+
+Je n’utilise plus Domoticz.  
+Le support et les mises à jour seront probablement très limités.
+
+---
+
+## 🇬🇧 **Project likely unmaintained**
+
+I no longer use Domoticz.  
+Support and updates will probably be very limited.
+
 *English below*
 
 # Participer aux frais d'hébergement et au développement du plugin
