@@ -22,8 +22,10 @@
 # <http://www.gnu.org/licenses/>.
 #
 """
-<plugin key="linky" name="Linky" author="Barberousse" version="2.6.0" externallink="https://github.com/guillaumezin/DomoticzLinky">
+<plugin key="linky" name="Linky" author="Barberousse" version="3.0.0" externallink="https://github.com/J0hnMatrix/DomoticzLinky">
     <params>
+        <param field="Username" label="Point de Livraison (PDL)" width="200px" required="true" default="" />
+        <param field="Password" label="Token MyElectricalData" width="500px" required="true" default="" />
         <param field="Mode4" label="Heures creuses (vide pour désactiver, cf. readme pour la syntaxe)" width="500px" required="false" default="">
 <!--        <param field="Mode4" label="Heures creuses" width="500px">
             <options>
@@ -128,23 +130,22 @@ import pickle
 import codecs
 import hashlib
 
-CLIENT_ID = ["d198fd52-61c0-4b77-8725-06a1ef90da9f", "9c551777-9d1b-447c-9e68-bfe6896ee002"]
+CLIENT_ID = ["", ""]
 
 LOGIN_BASE_PORT = ["443", "443"]
-LOGIN_BASE_URI = ["enedis.domoticz.russandol.pro", "opensrcdev.alwaysdata.net"]
-API_ENDPOINT_DEVICE_CODE = ["/device/code", "/domoticzlinkyconnect/device/code"]
-API_ENDPOINT_DEVICE_TOKEN = ["/device/token", "/domoticzlinkyconnect/device/token"]
-VERIFY_CODE_URI = ["https://" + LOGIN_BASE_URI[0] + "/device?code=",
-                   "https://" + LOGIN_BASE_URI[1] + "/domoticzlinkyconnect/device?code="]
+LOGIN_BASE_URI = ["www.myelectricaldata.fr", "www.myelectricaldata.fr"]
+API_ENDPOINT_DEVICE_CODE = ["", ""]
+API_ENDPOINT_DEVICE_TOKEN = ["", ""]
+VERIFY_CODE_URI = ["", ""]
 
 API_BASE_PORT = ["443", "443"]
-API_BASE_URI = ["enedis.domoticz.russandol.pro", "opensrcdev.alwaysdata.net"]
-API_ENDPOINT_DATA_URI = ["/data/proxy", "/domoticzlinkyconnect/data/proxy"]
-API_ENDPOINT_DATA_CONSUMPTION_LOAD_CURVE = '/metering_data_clc/v5/consumption_load_curve'
-API_ENDPOINT_DATA_CONSUMPTION_MAX_POWER = '/metering_data_dcmp/v5/daily_consumption_max_power'
-API_ENDPOINT_DATA_DAILY_CONSUMPTION = '/metering_data_dc/v5/daily_consumption'
-API_ENDPOINT_DATA_PRODUCTION_LOAD_CURVE = '/metering_data_plc/v5/production_load_curve'
-API_ENDPOINT_DATA_DAILY_PRODUCTION = '/metering_data_dp/v5/daily_production'
+API_BASE_URI = ["www.myelectricaldata.fr", "www.myelectricaldata.fr"]
+API_ENDPOINT_DATA_URI = ["", ""]
+API_ENDPOINT_DATA_CONSUMPTION_LOAD_CURVE = '/consumption_load_curve'
+API_ENDPOINT_DATA_CONSUMPTION_MAX_POWER = '/daily_consumption_max_power'
+API_ENDPOINT_DATA_DAILY_CONSUMPTION = '/daily_consumption'
+API_ENDPOINT_DATA_PRODUCTION_LOAD_CURVE = '/production_load_curve'
+API_ENDPOINT_DATA_DAILY_PRODUCTION = '/daily_production'
 
 HEADERS = {
     "Accept": "application/json",
@@ -310,6 +311,7 @@ class BasePlugin:
         self.lUsagePointIndex = []
         self.dUsagePointTimeout = {}
         self.dtLastSend = datetime(2000, 1, 1)
+        self.sToken = ""
 
 
     def myMessage(self, message, bNoLog=False):
@@ -383,11 +385,7 @@ class BasePlugin:
             return None
 
 
-    # Connect for login
-    def connectAndSendForAuthorize(self, data):
-        self.bLoginConnect = True
-        self.httpLoginConn = self.connectAndSend(self.httpLoginConn, data, LOGIN_BASE_URI[self.iAlternateAddress],
-                                                 LOGIN_BASE_PORT[self.iAlternateAddress])
+
 
 
     # Connect for metering data
@@ -405,26 +403,7 @@ class BasePlugin:
         return headers
 
 
-    # get access token
-    def getDeviceCode(self):
-        if ((int(LOGIN_BASE_PORT[self.iAlternateAddress]) == 80) or (int(LOGIN_BASE_PORT[self.iAlternateAddress]) == 443)) :
-            headers = self.initHeaders(LOGIN_BASE_URI[self.iAlternateAddress])
-        else:
-            headers = self.initHeaders(LOGIN_BASE_URI[self.iAlternateAddress] + ":" + LOGIN_BASE_PORT[self.iAlternateAddress])
 
-        postData = {
-            "client_id": CLIENT_ID[self.iAlternateAddress]
-        }
-
-        sendData = {
-            "Verb": "POST",
-            "URL": API_ENDPOINT_DEVICE_CODE[self.iAlternateAddress],
-            "Headers": headers,
-            "Data": dictToQuotedString(postData)
-        }
-
-        self.dumpDictToLog(sendData)
-        self.connectAndSendForAuthorize(sendData)
 
 
     def showStatusError(self, hours, Data, bWarningOnly=False, bDebug=False):
@@ -457,141 +436,7 @@ class BasePlugin:
         self.showSimpleStepError(sErrorSentence, bWarningOnly, bDebug)
 
 
-    def parseDeviceCode(self, Data):
-        #self.dumpDictToLog(Data)
-        iStatus = getStatus(Data)
-        if iStatus == 200:
-            if Data and ("Data" in Data):
-                try:
-                    dJson = json.loads(Data["Data"].decode())
-                except ValueError as err:
-                    self.showSimpleStepError("Les données reçues ne sont pas du JSON : " + str(err))
-                    return False
-                count = 0
-                if dJson and ("device_code" in dJson):
-                    self.sDeviceCode = dJson["device_code"]
-                    count = count + 1
-                if dJson and ("user_code" in dJson):
-                    sUserCode = dJson["user_code"]
-                    count = count + 1
-                if count == 2:
-                    sUrl = VERIFY_CODE_URI[self.iAlternateAddress] + quote(sUserCode)
-                    self.myError(
-                        "Connectez-vous à l'adresse " + sUrl + " pour lancer la demande de consentement avec le code " + sUserCode)
-                    return "done"
-                else:
-                    self.showSimpleStepError("Données incomplètes")
-            else:
-                self.showSimpleStepError("Pas de données reçue")
-        else:
-            self.showSimpleStatusError(Data)
-        return "retry"
 
-
-    # get access token
-    def getAccessToken(self):
-        if ((int(LOGIN_BASE_PORT[self.iAlternateAddress]) == 80) or (int(LOGIN_BASE_PORT[self.iAlternateAddress]) == 443)) :
-            headers = self.initHeaders(LOGIN_BASE_URI[self.iAlternateAddress])
-        else:
-            headers = self.initHeaders(LOGIN_BASE_URI[self.iAlternateAddress] + ":" + LOGIN_BASE_PORT[self.iAlternateAddress])
-
-        postData = {
-            "client_id": CLIENT_ID[self.iAlternateAddress],
-            "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-            "device_code": self.sDeviceCode
-        }
-
-        sendData = {
-            "Verb": "POST",
-            "URL": API_ENDPOINT_DEVICE_TOKEN[self.iAlternateAddress],
-            "Headers": headers,
-            "Data": dictToQuotedString(postData)
-        }
-
-        self.dumpDictToLog(sendData)
-        self.connectAndSendForAuthorize(sendData)
-
-
-    # Refresh token
-    def refreshToken(self):
-        if ((int(LOGIN_BASE_PORT[self.iAlternateAddress]) == 80) or (int(LOGIN_BASE_PORT[self.iAlternateAddress]) == 443)) :
-            headers = self.initHeaders(LOGIN_BASE_URI[self.iAlternateAddress])
-        else:
-            headers = self.initHeaders(LOGIN_BASE_URI[self.iAlternateAddress] + ":" + LOGIN_BASE_PORT[self.iAlternateAddress])
-
-        postData = {
-            "grant_type": "refresh_token",
-            "client_id": CLIENT_ID[self.iAlternateAddress],
-            "usage_points_id": ','.join(self.getConfigItem("usage_points_id", [])),
-            "refresh_token": self.getConfigItem("refresh_token", "")
-        }
-
-        sendData = {
-            "Verb": "POST",
-            "URL": API_ENDPOINT_DEVICE_TOKEN[self.iAlternateAddress],
-            "Headers": headers,
-            "Data": dictToQuotedString(postData)
-        }
-
-        self.bRefreshToken = True
-        self.dumpDictToLog(sendData)
-        self.connectAndSendForAuthorize(sendData)
-
-
-    # Parse access token
-    def parseAccessToken(self, Data):
-        #self.dumpDictToLog(Data)
-        iStatus = getStatus(Data)
-        sError, sErrorDescription, sErrorUri = getError(Data)
-        sError = sError.casefold()
-        if (sError == "unauthorized") or (sError == "invalid_grant") or (sError == "invalid_request"):
-            self.showSimpleStatusError(Data)
-            return "error"
-        if sError == "authorization_pending":
-            self.myDebug("pending")
-            if Data and ("Data" in Data):
-                try:
-                    dJson = json.loads(Data["Data"].decode())
-                except ValueError as err:
-                    self.showSimpleStepError("Les données reçues ne sont pas du JSON : " + str(err))
-                    return "retry"
-                if dJson and ("interval" in dJson):
-                    try:
-                        self.iInterval = int(dJson["interval"])
-                    except:
-                        self.iInterval = 5
-            return "pending"
-        elif iStatus == 200:
-            if Data and ("Data" in Data):
-                try:
-                    dJson = json.loads(Data["Data"].decode())
-                except ValueError as err:
-                    self.showSimpleStepError("Les données reçues ne sont pas du JSON : " + str(err))
-                    return "retry"
-                if dJson and ("usage_points_id" in dJson):
-                    self.setConfigItem("usage_points_id", str(dJson["usage_points_id"]).split(","))
-                count = 0
-                if dJson and ("refresh_token" in dJson):
-                    self.setConfigItem("refresh_token", dJson["refresh_token"])
-                    count = count + 1
-                if dJson and ("access_token" in dJson):
-                    self.setConfigItem("access_token", dJson["access_token"])
-                    count = count + 1
-                if dJson and ("token_type" in dJson):
-                    self.setConfigItem("token_type", dJson["token_type"])
-                    count = count + 1
-                if dJson and ("expires_in" in dJson):
-                    self.setConfigItem("expires_at", datetime.now() + timedelta(seconds=int(dJson["expires_in"])) - timedelta(minutes=10))
-                    count = count + 1
-                if count == 4:
-                    return "done"
-                else:
-                    self.showSimpleStepError("Pas assez de données reçue")
-            else:
-                self.showSimpleStepError("Pas de données reçue")
-        else:
-            self.showSimpleStatusError(Data)
-        return "retry"
 
 
     # Get data
@@ -601,19 +446,14 @@ class BasePlugin:
         else:
             headers = self.initHeaders(API_BASE_URI[self.iAlternateAddress] + ":" + API_BASE_PORT[self.iAlternateAddress])
 
-        headers["Authorization"] = self.getConfigItem("token_type", "") + " " + self.getConfigItem("access_token", "")
+        headers["Authorization"] = self.sToken
 
-        query = {
-            "start": datetimeToEnedisDateString(dtStart),
-            "end": datetimeToEnedisDateString(dtEnd),
-            "usage_point_id": self.sUsagePointId
-        }
+        url = uri + "/" + self.sUsagePointId + "/start/" + datetimeToEnedisDateString(dtStart) + "/end/" + datetimeToEnedisDateString(dtEnd) + "/cache/"
 
         sendData = {
             "Verb": "GET",
-            "URL": API_ENDPOINT_DATA_URI[self.iAlternateAddress] + uri + "?" + dictToQuotedString(query),
+            "URL": url,
             "Headers": headers
-            #"Data": dictToQuotedString(query)
         }
 
         self.dumpDictToLog(sendData)
@@ -624,6 +464,8 @@ class BasePlugin:
     def getOrCreateDevice(self, sUsagePointCurrentId):
         for iIndexUnit, oDevice in Devices.items():
             if sUsagePointCurrentId == oDevice.DeviceID:
+                if (not oDevice.sValue) or (";" not in oDevice.sValue):
+                    self.updateDevice(oDevice, 0, 0, 0, 0, 0, 0)
                 return oDevice
 
         for iIndexUnit in range(1, 256):
@@ -643,7 +485,9 @@ class BasePlugin:
                         "Ne peut ajouter de dispositif Linky à la base de données. Vérifiez dans les paramètres de Domoticz que l'ajout de nouveaux dispositifs est autorisé")
                     return None
                 else:
-                    return Devices[iIndexUnit]
+                    oDevice = Devices[iIndexUnit]
+                    self.updateDevice(oDevice, 0, 0, 0, 0, 0, 0)
+                    return oDevice
 
 
     # insert usage in Domoticz DB
@@ -1681,23 +1525,7 @@ class BasePlugin:
             self.setHistoryDays()
             # Reset state
             self.clearState()
-
-            if self.iAlternateAddress:
-                self.sConnectionStep = "start"
-            else:
-                # If we have still valid access tokens, try do grab data
-                # If we have old access tokens, renew them
-                # Otherwise, ask for consent
-                dtExpiresAt =  datetime.fromtimestamp(int(self.getConfigItem("expires_at", datetime(2000, 1, 1))))
-                if dtExpiresAt > datetime(2000, 1, 1):
-                    if datetime.now() < (dtExpiresAt - timedelta(minutes=10)):
-                        self.sConnectionStep = "start"
-                    else:
-                        self.sConnectionStep = "parseaccesstoken"
-                        self.refreshToken()
-                else:
-                    self.sConnectionStep = "parsedevicecode"
-                    self.getDeviceCode()
+            self.sConnectionStep = "start"
 
         # We should never reach this
         elif (self.sConnectionStep == "connecting") or (self.sConnectionStep == "sending"):
@@ -1713,27 +1541,6 @@ class BasePlugin:
             self.sConnectionStep = "done"
             self.bHasAFail = True
 
-        # Did we get a device code ?
-        elif self.sConnectionStep == "parsedevicecode":
-            result = self.parseDeviceCode(Data)
-            if result == "done":
-                self.sConnectionStep = "parseaccesstoken"
-                self.getAccessToken()
-            else:
-                self.sConnectionStep = "retry"
-                self.setNextConnectionForLater(self.iInterval)
-
-        # Wait for user to complete authorization process with his web browser
-        elif self.sConnectionStep == "askagainaccesscode":
-            # We must stay connected until completion, otherwise = error
-            if not self.httpLoginConn.Connected():
-                self.showSimpleStepError("Redemande du jeton d'accès", True)
-                self.sConnectionStep = "done"
-                self.bHasAFail = True
-            else:
-                self.sConnectionStep = "parseaccesstoken"
-                self.getAccessToken()
-
         # Retry
         elif self.sConnectionStep == "retry":
             if (self.iResendCount >= 3):
@@ -1742,21 +1549,6 @@ class BasePlugin:
                 self.bHasAFail = True
             else:
                 self.reconnectAndResend()
-
-        # Parse for access token
-        elif self.sConnectionStep == "parseaccesstoken":
-            result = self.parseAccessToken(Data)
-            if result == "done":
-                self.sConnectionStep = "start"
-            elif result == "retry":
-                self.sConnectionStep = "retry"
-                self.setNextConnectionForLater(self.iInterval)
-            # Wait for user to complete authorization process with his web browser
-            elif result == "pending":
-                self.sConnectionStep = "askagainaccesscode"
-                self.setNextConnectionForLater(self.iInterval)
-            else:
-                self.disablePlugin()
 
         # Ask data for hours
         elif self.sConnectionStep == "getdatahours":
@@ -1770,9 +1562,9 @@ class BasePlugin:
                 iStatus = getStatus(Data)
                 #self.dumpDictToLog(Data)
                 sError, sErrorDescription, sErrorUri = getError(Data)
-            if (sError.casefold() == "invalid_token") and (not self.bRefreshToken):
-                self.sConnectionStep = "parseaccesstoken"
-                self.refreshToken()
+            if (sError.casefold() == "invalid_token") or (iStatus == 401):
+                self.myError("Le token MyElectricalData est invalide ou expiré. Veuillez vérifier votre configuration dans Domoticz.")
+                self.disablePlugin()
             elif iStatus == 403:
                 self.showSimpleStatusError(Data)
                 self.disablePlugin()
@@ -1845,9 +1637,9 @@ class BasePlugin:
             else:
                 iStatus = getStatus(Data)
                 sError, sErrorDescription, sErrorUri = getError(Data)
-            if sError.casefold() == "invalid_token" and (not self.bRefreshToken):
-                self.sConnectionStep = "parseaccesstoken"
-                self.refreshToken()
+            if (sError.casefold() == "invalid_token") or (iStatus == 401):
+                self.myError("Le token MyElectricalData est invalide ou expiré. Veuillez vérifier votre configuration dans Domoticz.")
+                self.disablePlugin()
             elif iStatus == 403:
                 self.showSimpleStatusError(Data)
                 self.disablePlugin()
@@ -1882,7 +1674,7 @@ class BasePlugin:
             if self.iAlternateAddress :
                 self.lUsagePointIndex = self.lFalseCustomer
             else:
-                self.lUsagePointIndex = self.getConfigItem("usage_points_id", [])
+                self.lUsagePointIndex = [p.strip() for p in re.split(r'[,\s]+', self.sUsagePointId) if p.strip()]
             if (len(self.lUsagePointIndex) > 0):
                 dtNow = datetime.now()
                 self.resetDates(datetime(dtNow.year, dtNow.month, dtNow.day))
@@ -2039,6 +1831,8 @@ class BasePlugin:
             return
 
         # Even if not used, Username and Password may still be in database because of previous versions. We don't want them, as it triggers an unwanted HTTP basic autorization header in old Domoticz Python Framework
+        sUsagePointId_temp = Parameters.get("Username", "").strip()
+        sToken_temp = Parameters.get("Password", "").strip()
         Parameters.pop("Username", None)
         Parameters.pop("Password", None)
 
@@ -2117,6 +1911,8 @@ class BasePlugin:
 
         # most init
         self.__init__()
+        self.sUsagePointId = sUsagePointId_temp
+        self.sToken = sToken_temp
         self.clearData()
         
         # useful only if we differentiate peak hours in cache
@@ -2148,6 +1944,12 @@ class BasePlugin:
         self.dtNextRefresh = setRefreshTime(dtNow)
         self.dtGlobalTimeout = setTimeout(dtNow)
         self.setNextConnectionForLater(0)
+
+        # Pre-create devices during startup to bypass the "Accept new Hardware Devices" constraint in Domoticz
+        if self.sUsagePointId:
+            lUsagePoints = [p.strip() for p in re.split(r'[,\s]+', self.sUsagePointId) if p.strip()]
+            for pdl in lUsagePoints:
+                self.getOrCreateDevice(pdl)
 
         # Now we can enable the plugin
         self.isStarted = True
